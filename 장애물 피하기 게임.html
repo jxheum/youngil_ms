@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>슈퍼마리오 스타일 게임</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #87CEEB;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            border: 1px solid black;
+        }
+        #restartButton {
+            position: absolute;
+            background-color: #4CAF50;
+            color: white;
+            font-size: 18px;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            display: none;
+        }
+        #restartButton:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <button id="restartButton">다시 시작</button>
+
+    <script>
+        // 게임 설정
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 화면 크기 설정 함수
+        function resizeCanvas() {
+            canvas.width = window.innerWidth / 1.5; // 화면을 좁게 설정 (1.5배 축소)
+            canvas.height = window.innerHeight;
+        }
+
+        // 게임 상태 변수
+        let gameOver = false;
+        let score = 0;
+        let obstacleSpeed = 8; // 장애물 초기 속도 (기존보다 빠르게 설정)
+        let obstacleCreateInterval = 300; // 장애물 생성 간격 (기존보다 더 짧게 설정)
+        let obstacleCreateRate = 500; // 장애물 생성 비율 (시간에 따라 변경)
+
+        // 캐릭터 설정 (작은 공 모양)
+        const player = {
+            x: 50,
+            y: canvas.height - 20,
+            radius: 10, // 공 크기
+            speed: 5,
+            dx: 0,
+            dy: 0,
+            color: 'red',
+        };
+
+        // 장애물 설정
+        const obstacles = [];
+
+        // 화면 크기 조정 시 캔버스 크기 다시 설정
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas(); // 게임 시작 시 캔버스 크기 설정
+
+        // 방향키 이벤트 리스너
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp') {
+                player.dy = -player.speed;
+            } else if (e.key === 'ArrowDown') {
+                player.dy = player.speed;
+            } else if (e.key === 'ArrowLeft') {
+                player.dx = -player.speed;
+            } else if (e.key === 'ArrowRight') {
+                player.dx = player.speed;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                player.dy = 0;
+            }
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                player.dx = 0;
+            }
+        });
+
+        // 장애물 생성 (다양한 크기 및 랜덤 시간 간격)
+        function createObstacle() {
+            const x = canvas.width;
+            const y = Math.random() * (canvas.height - 50); // 높이가 랜덤으로 생성
+            const width = Math.random() * 70 + 50; // 장애물 너비는 50~120px 사이 랜덤
+            const height = Math.random() * 70 + 50; // 장애물 높이는 50~120px 사이 랜덤
+            const shapeRandomizer = Math.random();
+
+            // 장애물 형태 결정 (균등한 확률로 다각형, 막대기 등 추가)
+            let shape;
+            if (shapeRandomizer < 0.25) {
+                shape = 'circle';
+            } else if (shapeRandomizer < 0.5) {
+                shape = 'rectangle';
+            } else if (shapeRandomizer < 0.75) {
+                shape = 'diamond';
+            } else {
+                shape = 'longRectangle'; // 기다란 막대기 장애물 추가
+            }
+
+            obstacles.push({ x, y, width, height, shape });
+        }
+
+        // 장애물 이동
+        function moveObstacles() {
+            for (let i = 0; i < obstacles.length; i++) {
+                obstacles[i].x -= obstacleSpeed; // 장애물 이동 속도 (시간에 따라 증가)
+
+                // 기다란 막대기 장애물은 상하로 움직이도록 설정
+                if (obstacles[i].shape === 'longRectangle') {
+                    obstacles[i].y += Math.random() > 0.5 ? 2 : -2; // 상하로 움직임
+                }
+
+                // 장애물이 화면 밖으로 나가면 삭제
+                if (obstacles[i].x + obstacles[i].width < 0) {
+                    obstacles.splice(i, 1);
+                    i--;
+                }
+            }
+        }
+
+        // 플레이어와 장애물 충돌 체크
+        function checkCollisions() {
+            for (let i = 0; i < obstacles.length; i++) {
+                const o = obstacles[i];
+
+                if (o.shape === 'rectangle') {
+                    // 사각형과 충돌
+                    if (player.x < o.x + o.width &&
+                        player.x + player.radius * 2 > o.x &&
+                        player.y < o.y + o.height &&
+                        player.y + player.radius * 2 > o.y) {
+                        gameOver = true;
+                        showRestartButton();
+                        return;
+                    }
+                } else if (o.shape === 'circle') {
+                    // 원과 충돌
+                    const dx = player.x + player.radius - (o.x + o.width / 2);
+                    const dy = player.y + player.radius - (o.y + o.height / 2);
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < player.radius + Math.min(o.width, o.height) / 2) {
+                        gameOver = true;
+                        showRestartButton();
+                        return;
+                    }
+                } else if (o.shape === 'diamond') {
+                    // 마름모와 충돌
+                    if (player.x < o.x + o.width &&
+                        player.x + player.radius * 2 > o.x &&
+                        player.y < o.y + o.height &&
+                        player.y + player.radius * 2 > o.y) {
+                        gameOver = true;
+                        showRestartButton();
+                        return;
+                    }
+                } else if (o.shape === 'longRectangle') {
+                    // 기다란 막대기와 충돌
+                    if (player.x < o.x + o.width &&
+                        player.x + player.radius * 2 > o.x &&
+                        player.y < o.y + o.height &&
+                        player.y + player.radius * 2 > o.y) {
+                        gameOver = true;
+                        showRestartButton();
+                        return;
+                    }
+                }
+            }
+        }
+
+        // 플레이어 그리기 (작은 공 모양으로 변경)
+        function drawPlayer() {
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.arc(player.x + player.radius, player.y + player.radius, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        // 장애물 그리기
+        function drawObstacles() {
+            obstacles.forEach(o => {
+                ctx.fillStyle = 'green';
+                if (o.shape === 'rectangle') {
+                    ctx.fillRect(o.x, o.y, o.width, o.height);
+                } else if (o.shape === 'circle') {
+                    ctx.beginPath();
+                    ctx.arc(o.x + o.width / 2, o.y + o.height / 2, Math.min(o.width, o.height) / 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.closePath();
+                } else if (o.shape === 'diamond') {
+                    // 마름모 그리기
+                    ctx.beginPath();
+                    ctx.moveTo(o.x + o.width / 2, o.y);
+                    ctx.lineTo(o.x, o.y + o.height / 2);
+                    ctx.lineTo(o.x + o.width / 2, o.y + o.height);
+                    ctx.lineTo(o.x + o.width, o.y + o.height / 2);
+                    ctx.closePath();
+                    ctx.fill();
+                } else if (o.shape === 'longRectangle') {
+                    // 기다란 막대기 그리기
+                    ctx.fillRect(o.x, o.y, o.width, o.height);
+                }
+            });
+        }
+
+        // 점수 그리기
+        function drawScore() {
+            ctx.fillStyle = 'black';
+            ctx.font = '20px Arial';
+            ctx.fillText('점수: ' + score, 10, 30);
+        }
+
+        // 게임 루프
+        function gameLoop() {
+            if (gameOver) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawPlayer();
+            moveObstacles();
+            drawObstacles();
+            drawScore();
+            checkCollisions();
+
+            player.x += player.dx;
+            player.y += player.dy;
+
+            // 벗어나지 않도록 설정
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.radius * 2 > canvas.width) player.x = canvas.width - player.radius * 2;
+            if (player.y < 0) player.y = 0;
+            if (player.y + player.radius * 2 > canvas.height) player.y = canvas.height - player.radius * 2;
+
+            score++; // 시간에 따라 점수 증가
+
+            // 장애물 속도 증가
+            if (score % 50 === 0) {
+                obstacleSpeed += 0.1;
+            }
+
+            // 장애물 개수 증가
+            if (score % 200 === 0) {
+                obstacleCreateInterval -= 30; // 간격을 줄여 장애물이 더 자주 생성되게
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 게임 종료 시 다시 시작 버튼 보이기
+        function showRestartButton() {
+            document.getElementById('restartButton').style.display = 'block';
+        }
+
+        // 게임 다시 시작
+        document.getElementById('restartButton').addEventListener('click', () => {
+            location.reload();
+        });
+
+        // 주기적으로 장애물 생성
+        function randomObstacleInterval() {
+            setInterval(createObstacle, obstacleCreateInterval); // 더 짧은 간격으로 장애물 생성
+        }
+
+        // 게임 시작
+        randomObstacleInterval();
+        gameLoop();
+    </script>
+</body>
+</html>
